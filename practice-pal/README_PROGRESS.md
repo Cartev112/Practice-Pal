@@ -71,6 +71,12 @@ We've successfully implemented the following core functionality for the Practice
    - Added a PracticeSessionManager component to manage practice sessions, including session recording and tracking.
    - Implemented exercise selection for focused practice and created a session history view.
    - Created a dedicated PracticeSessionsPage for managing practice sessions.
+   - **Adaptive Tempo Control (Foundation)**:
+     - Added state management (`adaptiveTempoEnabled`, `currentTargetTempo`, `actualTempo`, `performanceHistory`) within `PracticeSessionManager` to track the adaptive tempo status and related values.
+     - Integrated a UI Toggle (`Switch` component from Shadcn) allowing users to enable/disable the adaptive tempo feature during a practice session.
+     - Implemented a handler (`handleAdaptiveTempoToggle`) that connects the UI toggle to the `adaptiveTempoEnabled` state and includes logic to reset tempo values and performance history when the feature is toggled.
+     - Displayed the `actualTempo` and `currentTargetTempo` when adaptive mode is enabled.
+     - **Note:** The core logic for *automatically adjusting* the tempo based on `performanceHistory` is the next step and is not yet implemented.
 
 4. **UI/UX Improvements**:
    - Added Navbar and Footer components for better navigation and user experience.
@@ -122,6 +128,44 @@ We've successfully implemented the following core functionality for the Practice
 4. **Practice Session Flow**:
    - Practice sessions needed to be moved to their own dedicated page.
    - Solution: Created a PracticeSessionsPage component with comprehensive session management features.
+
+## Phase 3 Implementation Status
+
+### Completed Features
+
+1. **Backend Setup & Integration**:
+   - Set up a Node.js backend server using Express and TypeScript.
+   - Configured an SQLite database to store practice session data, including pitch and rhythm events.
+   - Implemented API endpoints:
+     - `POST /api/sessions`: To save new practice sessions.
+     - `GET /api/sessions`: To retrieve a list of session summaries.
+     - `GET /api/sessions/:id`: To retrieve detailed information for a specific session.
+   - Integrated the frontend `PracticeSessionManager` to send completed session data to the backend via the `POST` endpoint.
+   - Updated the `PracticeSessionsPage` to fetch and display session summaries from the `GET /api/sessions` endpoint.
+   - Created a `SessionDetailPage` component to display detailed session information.
+   - Implemented routing (`/sessions/:id`) for the `SessionDetailPage`.
+   - Updated `PracticeSessionsPage` to navigate to the `SessionDetailPage` when a session card is clicked.
+
+### Next Steps
+
+1. **User Authentication**:
+   - Implement user accounts and authentication for personalized practice tracking.
+
+2. **Advanced Exercise Management**:
+   - Develop a more comprehensive exercise library.
+   - Add the ability to create custom exercises.
+   - Implement exercise categorization and filtering.
+
+3. **Performance Analytics & Visualization**:
+   - Enhance the `SessionDetailPage` with visualizations for pitch and rhythm data (e.g., graphs, charts).
+   - Create detailed performance analytics for practice sessions.
+   - Implement progress tracking over time.
+   - Add visualizations for performance metrics.
+
+4. **Mobile Responsiveness & UI Polish**:
+   - Enhance mobile responsiveness for better usage on different devices.
+   - Optimize UI components for touch interfaces.
+   - Refine styling and user experience across the application.
 
 ## Conclusion
 

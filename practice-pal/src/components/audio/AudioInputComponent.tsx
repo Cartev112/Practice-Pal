@@ -19,8 +19,15 @@ const AudioInputComponent: React.FC<AudioInputProps> = ({ onAudioData, isRecordi
   const streamRef = useRef<MediaStream | null>(null);
   
   const initializeMicrophone = async () => {
+    let cancelled = false;
+
     if (!isAudioInitialized) {
-      await initializeAudio();
+      try {
+        await initializeAudio();
+      } catch (err: any) {
+        setError(err.message ?? 'Failed to initialise audio context.');
+        return;
+      }
     }
     
     try {
@@ -29,6 +36,11 @@ const AudioInputComponent: React.FC<AudioInputProps> = ({ onAudioData, isRecordi
       }
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (cancelled) {
+        // Component unmounted while awaiting permission
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
       streamRef.current = stream;
       
       const source = audioContext.createMediaStreamSource(stream);
@@ -44,17 +56,33 @@ const AudioInputComponent: React.FC<AudioInputProps> = ({ onAudioData, isRecordi
       dataArrayRef.current = dataArray;
       setIsInitialized(true);
     } catch (err: any) {
-      setError(err.message);
+      if (!cancelled) {
+        setError(err.message ?? 'Microphone access denied.');
+      }
     }
+
+    // Return a cancel function so that callers can set cancelled = true
+    return () => {
+      cancelled = true;
+    };
   };
   
   const processAudio = () => {
     if (!analyserRef.current || !dataArrayRef.current || !isRecording) return;
     
     analyserRef.current.getFloatTimeDomainData(dataArrayRef.current);
-    const audioData = dataArrayRef.current;
-    setLocalAudioData(new Float32Array(audioData));
-    onAudioData(audioData);
+    
+    // Create a copy of the audio data to avoid reference issues
+    const audioDataCopy = new Float32Array(dataArrayRef.current);
+    
+    // Only update state occasionally to prevent excessive renders
+    // This reduces the number of state updates while still providing data frequently enough
+    if (Math.random() < 0.2) { // Update roughly 20% of the time
+      setLocalAudioData(audioDataCopy);
+    }
+    
+    // Always pass the data to parent via callback (doesn't trigger re-renders)
+    onAudioData(audioDataCopy);
     
     animationFrameRef.current = requestAnimationFrame(processAudio);
   };
@@ -79,6 +107,13 @@ const AudioInputComponent: React.FC<AudioInputProps> = ({ onAudioData, isRecordi
       cancelAnimationFrame(animationFrameRef.current);
     }
   }, [isInitialized, isRecording]);
+  
+  // When context reports initialised while this component is mounted
+  useEffect(() => {
+    if (isAudioInitialized) {
+      setIsInitialized(true);
+    }
+  }, [isAudioInitialized]);
   
   return (
     <div className="audio-input">

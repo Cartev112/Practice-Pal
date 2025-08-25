@@ -3,12 +3,12 @@ import { PitchDetector } from 'pitchy';
 import TunerDisplay from './TunerDisplay';
 import NoteHistoryVisualization from './NoteHistoryVisualization';
 import NoteStabilityIndicator from './NoteStabilityIndicator';
-import FrequencySpectrumVisualization from './FrequencySpectrumVisualization';
+import { PitchEvent } from '../practice/PracticeSessionManager';
 
 interface PitchDetectionProps {
   audioData: Float32Array | null;
   isRecording: boolean;
-  onPitchDetected?: (note: string, frequency: number | null, cents: number | null) => void;
+  onPitchDetected?: (data: PitchEvent) => void;
 }
 
 const PitchDetection: React.FC<PitchDetectionProps> = ({ audioData, isRecording, onPitchDetected }) => {
@@ -17,9 +17,6 @@ const PitchDetection: React.FC<PitchDetectionProps> = ({ audioData, isRecording,
   const [centsDeviation, setCentsDeviation] = useState<number | null>(null);
   const [confidenceLevel, setConfidenceLevel] = useState<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const frequencyBufferRef = useRef<number[]>([]);
   const noteBufferRef = useRef<string[]>([]);
   const bufferSizeRef = useRef<number>(5); // Size of buffer for smoothing
@@ -50,97 +47,59 @@ const PitchDetection: React.FC<PitchDetectionProps> = ({ audioData, isRecording,
     return { note: noteName, cents: centsDeviation };
   };
 
-  // Setup audio analysis
+  // Initialize audio context and pitch detector
   useEffect(() => {
-    if (!isRecording) {
-      // Clean up when not recording
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      
-      if (sourceRef.current) {
-        sourceRef.current.disconnect();
-        sourceRef.current = null;
-      }
-      
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    // Initialize Pitchy detector for the size of incoming audio data
+    if (!pitchDetectorRef.current && audioData) {
+      pitchDetectorRef.current = PitchDetector.forFloat32Array(audioData.length);
+    }
+    
+    return () => {
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
-        audioContextRef.current = null;
       }
-      
+    };
+  }, [audioData]);
+
+  // Reset state when recording stops
+  useEffect(() => {
+    if (!isRecording) {
       setDetectedNote('--');
       setDetectedFrequency(null);
       setCentsDeviation(null);
       setConfidenceLevel(0);
-      if (onPitchDetected) onPitchDetected('--', null, null);
-      return;
+      frequencyBufferRef.current = [];
+      noteBufferRef.current = [];
+      // Pass undefined for confidence when resetting
+      if (onPitchDetected) onPitchDetected({ timestamp: Date.now(), note: '--', frequency: null, cents: null, confidence: undefined });
     }
-    
-    // Initialize audio context and analyzer
-    const setupAudio = async () => {
-      try {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        if (audioContextRef.current) {
-          if (sourceRef.current) {
-            sourceRef.current.disconnect();
-          }
-          
-          sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-          analyserRef.current = audioContextRef.current.createAnalyser();
-          analyserRef.current.fftSize = 2048;
-          sourceRef.current.connect(analyserRef.current);
-          
-          // Initialize Pitchy detector
-          pitchDetectorRef.current = PitchDetector.forFloat32Array(analyserRef.current.fftSize);
-          
-          // Start analyzing
-          detectPitch();
-        }
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-      }
-    };
-    
-    setupAudio();
-    
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
   }, [isRecording, onPitchDetected]);
 
-  // Pitch detection loop
-  const detectPitch = () => {
-    if (!analyserRef.current || !audioContextRef.current || !pitchDetectorRef.current) return;
-    
-    const bufferLength = analyserRef.current.fftSize;
-    const buffer = new Float32Array(bufferLength);
-    analyserRef.current.getFloatTimeDomainData(buffer);
+  // Process audio data from props
+  useEffect(() => {
+    if (!isRecording || !audioData || !pitchDetectorRef.current || !audioContextRef.current) return;
     
     // Check if there's enough signal
     let sum = 0;
-    for (let i = 0; i < bufferLength; i++) {
-      sum += buffer[i] * buffer[i];
+    for (let i = 0; i < audioData.length; i++) {
+      sum += audioData[i] * audioData[i];
     }
     
-    const rms = Math.sqrt(sum / bufferLength);
+    const rms = Math.sqrt(sum / audioData.length);
     
     // Only analyze if we have sufficient signal
-    if (rms > 0.01) {
+    if (rms > 0.01) {  // Lower threshold to catch quieter notes
       // Use Pitchy to detect the pitch
-      const [pitch, clarity] = pitchDetectorRef.current.findPitch(buffer, audioContextRef.current.sampleRate);
+      const [pitch, clarity] = pitchDetectorRef.current.findPitch(audioData, audioContextRef.current.sampleRate);
       
       // Convert clarity (0-1) to confidence percentage
       const confidence = Math.min(clarity * 100, 100);
       
-      if (pitch && pitch > 30 && pitch < 5000 && clarity > 0.5) {
+      if (pitch && pitch > 30 && pitch < 5000 && clarity > 0.4) {  // Lower clarity threshold slightly
         // Add to buffer for smoothing
         frequencyBufferRef.current.push(pitch);
         if (frequencyBufferRef.current.length > bufferSizeRef.current) {
@@ -182,13 +141,28 @@ const PitchDetection: React.FC<PitchDetectionProps> = ({ audioData, isRecording,
         setDetectedNote(dominantNote);
         setCentsDeviation(cents);
         setConfidenceLevel(Math.round(overallConfidence));
-        if (onPitchDetected) onPitchDetected(dominantNote, medianFreq, cents);
+        
+        // Pass full data object including confidence and timestamp
+        if (onPitchDetected) onPitchDetected({ timestamp: Date.now(), note: dominantNote, frequency: medianFreq, cents, confidence: Math.round(overallConfidence) });
+      }
+    } else {
+      // Signal is too weak - note has ended
+      // Only clear if we have data in the buffer (prevents unnecessary state updates)
+      if (frequencyBufferRef.current.length > 0 || noteBufferRef.current.length > 0) {
+        // Clear buffers
+        frequencyBufferRef.current = [];
+        noteBufferRef.current = [];
+        
+        // Reset detection state
+        setDetectedNote('--');
+        setDetectedFrequency(null);
+        setCentsDeviation(null);
+        setConfidenceLevel(0);
+        // Pass undefined for confidence when resetting due to weak signal
+        if (onPitchDetected) onPitchDetected({ timestamp: Date.now(), note: '--', frequency: null, cents: null, confidence: undefined });
       }
     }
-    
-    // Continue detection loop
-    animationFrameRef.current = requestAnimationFrame(detectPitch);
-  };
+  }, [audioData, isRecording, onPitchDetected]);
 
   return (
     <div className="mt-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow space-y-4">

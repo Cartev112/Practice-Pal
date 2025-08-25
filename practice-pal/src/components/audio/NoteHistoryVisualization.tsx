@@ -23,14 +23,14 @@ const NoteHistoryVisualization: React.FC<NoteHistoryVisualizationProps> = ({
 
   // Update history when note changes
   useEffect(() => {
-    if (!isRecording || currentNote === '--') return;
+    if (!isRecording) return;
     
     const now = Date.now();
     
-    // If this is a new note
+    // If this is a new note or note has ended
     if (currentNote !== lastNote) {
       // If we had a previous note, add it to history with duration
-      if (lastNote && lastNoteTimestamp) {
+      if (lastNote && lastNoteTimestamp && lastNote !== '--') {
         const duration = now - lastNoteTimestamp;
         
         setNoteHistory(prevHistory => {
@@ -44,9 +44,15 @@ const NoteHistoryVisualization: React.FC<NoteHistoryVisualizationProps> = ({
         });
       }
       
-      // Update the current note
-      setLastNote(currentNote);
-      setLastNoteTimestamp(now);
+      // Only update the current note if it's not '--' (silence)
+      if (currentNote !== '--') {
+        setLastNote(currentNote);
+        setLastNoteTimestamp(now);
+      } else {
+        // Reset last note when silence is detected
+        setLastNote(null);
+        setLastNoteTimestamp(null);
+      }
     }
   }, [currentNote, isRecording, lastNote, lastNoteTimestamp, maxHistory]);
 

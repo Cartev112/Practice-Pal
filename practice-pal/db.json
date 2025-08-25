@@ -1,0 +1,66 @@
+{
+  "exercises": [
+    {
+      "id": "1",
+      "title": "Major Scale (C)",
+      "description": "Practice the C Major scale.",
+      "tempo": 100,
+      "timeSignature": [
+        4,
+        4
+      ],
+      "notes": [
+        "C4",
+        "D4",
+        "E4",
+        "F4",
+        "G4",
+        "A4",
+        "B4",
+        "C5"
+      ],
+      "category": "Scales"
+    },
+    {
+      "id": "2",
+      "title": "Chromatic Scale (Up)",
+      "description": "Ascending chromatic scale from C4.",
+      "tempo": 80,
+      "timeSignature": [
+        4,
+        4
+      ],
+      "notes": [
+        "C4",
+        "C#4",
+        "D4",
+        "D#4",
+        "E4",
+        "F4",
+        "F#4",
+        "G4",
+        "G#4",
+        "A4",
+        "A#4",
+        "B4",
+        "C5"
+      ],
+      "category": "Chromatic"
+    },
+    {
+      "id": "f5a2",
+      "title": "boop",
+      "description": "",
+      "tempo": 120,
+      "timeSignature": [
+        4,
+        4
+      ],
+      "notes": [
+        "C4",
+        "D4"
+      ],
+      "category": "Custom"
+    }
+  ]
+}

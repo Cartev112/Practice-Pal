@@ -21,8 +21,18 @@ export const AudioContextProvider: React.FC<AudioProviderProps> = ({ children })
     
     try {
       const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
       setAudioCtx(context);
       setIsInitialized(true);
+
+      // Attempt to resume the context immediately (required by browsers)
+      if (context.state === 'suspended') {
+        try {
+          await context.resume();
+        } catch (resumeError) {
+          console.error('AudioContext: Failed to resume context:', resumeError);
+        }
+      }
     } catch (error) {
       console.error('Failed to initialize audio context:', error);
     }

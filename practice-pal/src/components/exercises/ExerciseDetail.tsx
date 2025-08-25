@@ -1,17 +1,5 @@
 import React from 'react';
-
-interface Exercise {
-  id: string;
-  type: 'scale' | 'arpeggio' | 'rhythm' | 'improvisation' | 'custom';
-  name: string;
-  description: string;
-  difficulty: number;
-  targetTempo: number;
-  recommendedRepetitions: number;
-  focusAreas: string[];
-  notation?: string;
-  audioExample?: string;
-}
+import { Exercise } from '../../types/exerciseTypes';
 
 interface ExerciseDetailProps {
   exercise: Exercise | null;
@@ -31,28 +19,6 @@ const ExerciseDetail: React.FC<ExerciseDetailProps> = ({
       </div>
     );
   }
-  
-  // Function to generate a difficulty display
-  const getDifficultyLabel = (level: number) => {
-    switch (level) {
-      case 1: return 'Beginner';
-      case 2: return 'Easy';
-      case 3: return 'Intermediate';
-      case 4: return 'Advanced';
-      case 5: return 'Expert';
-      default: return `Level ${level}`;
-    }
-  };
-  
-  const getDifficultyColor = (level: number) => {
-    if (level <= 2) {
-      return 'text-green-600 dark:text-green-400';
-    } else if (level <= 4) {
-      return 'text-yellow-600 dark:text-yellow-400';
-    } else {
-      return 'text-red-600 dark:text-red-400';
-    }
-  };
   
   return (
     <div className="exercise-detail">
@@ -78,13 +44,8 @@ const ExerciseDetail: React.FC<ExerciseDetailProps> = ({
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{exercise.name}</h2>
-            <div className="text-sm text-gray-500 dark:text-gray-400 capitalize">{exercise.type}</div>
-          </div>
-          
-          <div className={`text-right ${getDifficultyColor(exercise.difficulty)}`}>
-            <div className="text-lg font-medium">{getDifficultyLabel(exercise.difficulty)}</div>
-            <div className="text-sm">Difficulty: {exercise.difficulty}/5</div>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{exercise.title}</h2>
+            <div className="text-sm text-gray-500 dark:text-gray-400 capitalize">Category: {exercise.category}</div>
           </div>
         </div>
         
@@ -94,58 +55,36 @@ const ExerciseDetail: React.FC<ExerciseDetailProps> = ({
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-3">Practice Details</h3>
+            <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-3">Parameters</h3>
             
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Target Tempo:</span>
-                <span className="font-medium text-gray-800 dark:text-white">{exercise.targetTempo} BPM</span>
+                <span className="text-gray-600 dark:text-gray-300">Tempo:</span>
+                <span className="font-medium text-gray-800 dark:text-white">{exercise.tempo} BPM</span>
               </div>
-              
               <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Recommended Repetitions:</span>
-                <span className="font-medium text-gray-800 dark:text-white">{exercise.recommendedRepetitions}</span>
+                <span className="text-gray-600 dark:text-gray-300">Time Signature:</span>
+                <span className="font-medium text-gray-800 dark:text-white">{exercise.timeSignature[0]}/{exercise.timeSignature[1]}</span>
               </div>
             </div>
           </div>
           
           <div>
-            <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-3">Focus Areas</h3>
-            
-            <div className="flex flex-wrap gap-2">
-              {exercise.focusAreas.map((area, index) => (
-                <span 
-                  key={index}
-                  className="px-3 py-1 bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 rounded-full text-sm"
-                >
-                  {area}
-                </span>
-              ))}
-            </div>
+            <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-3">Notes</h3>
+            {exercise.notes && exercise.notes.length > 0 ? (
+              <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded">
+                <p className="font-mono text-sm text-gray-700 dark:text-gray-200 break-words">
+                  {exercise.notes.join(', ')}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">No specific notes defined.</p>
+            )}
           </div>
         </div>
-        
-        {exercise.notation && (
-          <div className="mt-6">
-            <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-3">Notation</h3>
-            <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg font-mono">
-              {exercise.notation}
-            </div>
-          </div>
-        )}
-        
-        {exercise.audioExample && (
-          <div className="mt-6">
-            <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-3">Audio Example</h3>
-            <audio controls className="w-full">
-              <source src={exercise.audioExample} type="audio/mpeg" />
-              Your browser does not support the audio element.
-            </audio>
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-export default ExerciseDetail; 
+export default ExerciseDetail;

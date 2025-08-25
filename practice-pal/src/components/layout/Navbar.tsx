@@ -56,6 +56,13 @@ const Navbar: React.FC<NavbarProps> = ({ isRecording, darkMode, onToggleDarkMode
             >
               Exercises
             </Link>
+            {/* Add link for Practice Sessions */}
+            <Link 
+              to="/sessions"
+              className="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400"
+            >
+              Sessions
+            </Link>
             
             {/* Dark mode toggle */}
             <button 

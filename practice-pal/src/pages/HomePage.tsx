@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+// @ts-nocheck
+// Placeholder component kept for legacy imports. Can be safely removed once all references are gone.
+import React from 'react';
 import { Link } from 'react-router-dom';
 import MetronomeComponent from '../components/audio/MetronomeComponent';
 import AudioInputComponent from '../components/audio/AudioInputComponent';
 import PitchDetection from '../components/audio/PitchDetection';
 import RhythmAnalysis from '../components/audio/RhythmAnalysis';
-import PracticeSessionManager from '../components/practice/PracticeSessionManager';
+import PracticeSessionManager, { PracticeSession } from '../components/practice/PracticeSessionManager';
+import { PitchEvent, RhythmEvent } from '../components/practice/PracticeSessionManager';
 
-interface HomePageProps {
+
   tempo: number;
   isPlaying: boolean;
   isRecording: boolean;
@@ -14,43 +17,67 @@ interface HomePageProps {
   onPlayingChange: (isPlaying: boolean) => void;
   onAudioData: (data: Float32Array) => void;
   onStartPractice: () => void;
-  onStopPractice: () => void;
-}
+  onEndPractice: (session: PracticeSession) => void;
+  onDiscardPractice: () => void;
+  currentSessionData: PracticeSession | null;
 
-const HomePage: React.FC<HomePageProps> = ({
-  tempo,
-  isPlaying,
-  isRecording,
-  onTempoChange,
-  onPlayingChange,
-  onAudioData,
+const HomePage: React.FC = () => (
+  <div />
+);
+
+export default HomePage;
   onStartPractice,
-  onStopPractice
+  onEndPractice,
+  onDiscardPractice,
+  currentSessionData,
 }) => {
   const [currentAudioData, setCurrentAudioData] = useState<Float32Array | null>(null);
-  const [detectedNote, setDetectedNote] = useState<string>('--');
-  // We're keeping centsDeviation for future use in the UI
-  const [centsDeviation, setCentsDeviation] = useState<number | null>(null);
-  const [rhythmScore, setRhythmScore] = useState<number>(0);
-  
-  // Handler to update the local state and pass to parent
-  const handleAudioData = (data: Float32Array) => {
+  const [latestPitchData, setLatestPitchData] = useState<PitchEvent | null>(null);
+  const [latestRhythmEvent, setLatestRhythmEvent] = useState<RhythmEvent | null>(null);
+  const [metronomeStartTime, setMetronomeStartTime] = useState<number | null>(null);
+  const [metronomeTempo, setMetronomeTempo] = useState<number>(tempo);
+
+  const handleAudioData = useCallback((data: Float32Array) => {
     setCurrentAudioData(data);
     onAudioData(data);
-  };
-  
-  // Handler for pitch detection updates
-  const handlePitchDetection = (note: string, _frequency: number | null, cents: number | null) => {
-    setDetectedNote(note);
-    setCentsDeviation(cents);
-  };
-  
-  // Handler for rhythm analysis updates
-  const handleRhythmUpdate = (score: number) => {
-    setRhythmScore(score);
-  };
+  }, [setCurrentAudioData, onAudioData]);
+
+  const handlePitchDetection = useCallback((data: PitchEvent) => {
+    setLatestPitchData(data);
+  }, [setLatestPitchData]);
+
+  const handleRhythmEvent = useCallback((event: RhythmEvent) => {
+    setLatestRhythmEvent(event);
+  }, [setLatestRhythmEvent]);
+
+  const handleMetronomeStart = useCallback((startTime: number) => {
+    console.log(`HomePage: Metronome started at epoch: ${startTime}`);
+    setMetronomeStartTime(startTime);
+  }, [setMetronomeStartTime]);
+
+  const handleActualTempoChange = useCallback((newTempo: number) => {
+    console.log(`HomePage: Received tempo change request: ${newTempo}`);
+    setMetronomeTempo(newTempo);
+  }, [setMetronomeTempo]);
+
+  const timeSignatureValue = useMemo<[number, number]>(() => [4, 4], []);
 
   return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white px-4">
+      <h1 className="text-5xl md:text-7xl font-bold mb-8 text-center">
+        Practice&nbsp;<span className="text-indigo-500">Pal</span>
+      </h1>
+      <p className="mb-8 text-lg text-gray-300 text-center max-w-lg">
+        Your smart practice companion
+      </p>
+      <div className="w-full max-w-md grid gap-4">
+        <NavButton to="/exercises"   color="indigo"  icon="🎼" label="Exercises" />
+        <NavButton to="/analytics"   color="teal"    icon="📊" label="Analytics" />
+        <NavButton to="/sessions"    color="amber"   icon="📜" label="Session History" />
+        <NavButton to="/practice"    color="rose"    icon="▶️" label="New Session" />
+      </div>
+    </div>
+  );
     <div className="home-page">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
@@ -73,47 +100,55 @@ const HomePage: React.FC<HomePageProps> = ({
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Metronome</h2>
             <MetronomeComponent 
-              tempo={tempo} 
-              timeSignature={[4, 4]} 
+              tempo={metronomeTempo} 
+              timeSignature={timeSignatureValue} 
               isPlaying={isPlaying}
               onTempoChange={onTempoChange}
               onPlayingChange={onPlayingChange}
+              onMetronomeStart={handleMetronomeStart}
             />
           </div>
-          
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Audio Input</h2>
-            <AudioInputComponent 
-              onAudioData={handleAudioData}
-              isRecording={isRecording}
-            />
-          </div>
-          
+        
           <PracticeSessionManager 
             isRecording={isRecording}
             onStartSession={onStartPractice}
-            onEndSession={onStopPractice}
-            currentNote={detectedNote}
-            rhythmScore={rhythmScore}
+            onEndSession={onEndPractice}
+            onDiscardSession={onDiscardPractice}
+            onActualTempoChange={handleActualTempoChange}
+            latestPitchData={latestPitchData}
+            latestRhythmEvent={latestRhythmEvent}
+            tempo={tempo}
+            timeSignature="4/4"
+            currentSessionData={currentSessionData}
           />
         </div>
         
         {/* Right column */}
         <div className="space-y-6">
+          {/* Audio Input Section */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Audio Input</h2>
+            <AudioInputComponent 
+              isRecording={isRecording}
+              onAudioData={handleAudioData}
+            />
+          </div>
+          {/* Pitch Detection Section */}
           <PitchDetection 
             audioData={currentAudioData} 
             isRecording={isRecording}
             onPitchDetected={handlePitchDetection}
           />
-          
+          {/* Rhythm Analysis Section */}
           <RhythmAnalysis 
             isRecording={isRecording}
-            tempo={tempo}
-            timeSignature={[4, 4]}
+            tempo={metronomeTempo}
+            timeSignature={timeSignatureValue}
             audioData={currentAudioData}
-            onRhythmScoreUpdate={handleRhythmUpdate}
+            onRhythmEvent={handleRhythmEvent}
+            isPlaying={isPlaying}
+            metronomeStartTime={metronomeStartTime}
           />
-          
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-4">
@@ -148,5 +183,3 @@ const HomePage: React.FC<HomePageProps> = ({
     </div>
   );
 };
-
-export default HomePage;

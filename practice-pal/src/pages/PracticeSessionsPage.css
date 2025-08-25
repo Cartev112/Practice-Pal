@@ -1,0 +1,68 @@
+.practice-sessions-page {
+  padding: 2rem;
+  background-color: #f9f9f9;
+  min-height: 100vh;
+}
+
+.session-list-container {
+  margin-top: 2rem;
+}
+
+.session-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.session-summary-card {
+  background-color: white;
+  padding: 1.5rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.session-summary-card:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.session-summary-card p {
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.session-summary-card p:last-child {
+  margin-bottom: 0;
+}
+
+.session-summary-card strong {
+  color: #555;
+}
+
+.error-message {
+  color: #d9534f; /* Bootstrap danger color */
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.back-button {
+  background-color: #6c757d; /* Bootstrap secondary color */
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.back-button:hover {
+  background-color: #5a6268;
+}
+
+/* Add styles for modal if kept - based on previous edits */
+/* You might already have Tailwind styles handling this */
+
+

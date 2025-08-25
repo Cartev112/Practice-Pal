@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// Define RhythmEvent interface (mirroring PracticeSessionManager)
+interface RhythmEvent {
+  timestamp: number; // Relative to session start (ms)
+  deviation: number | null;
+  beatIndex: number | null;
+  isOnBeat?: boolean;
+}
+
 interface RhythmAnalysisProps {
   isRecording: boolean;
   tempo: number;
   timeSignature: [number, number];
   audioData: Float32Array | null;
-  onRhythmScoreUpdate?: (score: number) => void;
+  // Update prop name and signature
+  onRhythmEvent?: (event: RhythmEvent) => void;
+  isPlaying: boolean;
+  metronomeStartTime: number | null;
 }
 
 interface BeatInfo {
+  id: number; // unique identifier (use timestamp)
   timestamp: number;
   deviation: number; // in milliseconds
   isOnBeat: boolean;
@@ -19,300 +31,260 @@ const RhythmAnalysis: React.FC<RhythmAnalysisProps> = ({
   tempo,
   timeSignature,
   audioData,
-  onRhythmScoreUpdate
+  // Use the new prop name
+  onRhythmEvent,
+  isPlaying,
+  metronomeStartTime: externalMetronomeStartTime
 }) => {
+  // State for visualization and scoring
   const [beatHistory, setBeatHistory] = useState<BeatInfo[]>([]);
-  const [currentBeat, setCurrentBeat] = useState<number>(1);
   const [rhythmScore, setRhythmScore] = useState<number>(0);
-  const [averageDeviation, setAverageDeviation] = useState<number | null>(null);
-  const [metronomeStartTime, setMetronomeStartTime] = useState<number | null>(null);
+  const [currentBeat, setCurrentBeat] = useState<number>(0);
   
-  const lastOnsetTime = useRef<number | null>(null);
-  const beatInterval = useRef<number>(60000 / tempo); // in milliseconds
-  const beatTimestamps = useRef<number[]>([]);
+  // Refs for tracking audio processing
   const lastProcessedTime = useRef<number>(0);
   const prevRMSRef = useRef<number>(0);
-  const adaptiveThresholdRef = useRef<number>(0.1);
+  const adaptiveThresholdRef = useRef<number>(0.05);
+  const lastOnsetTime = useRef<number | null>(null);
+  
+  // Refs for metronome and beat tracking
+  const metronomeStartTime = useRef<number | null>(null);
+  const beatInterval = useRef<number>(60000 / tempo);
+  const animationFrameRef = useRef<number | null>(null);
+  
+  // Update metronome start time when it changes externally
+  useEffect(() => {
+    metronomeStartTime.current = externalMetronomeStartTime;
+  }, [externalMetronomeStartTime]);
   
   // Update beat interval when tempo changes
   useEffect(() => {
     beatInterval.current = 60000 / tempo;
-    
-    // Reset metronome start time when tempo changes during recording
-    if (isRecording) {
-      setMetronomeStartTime(Date.now());
-      // Recalculate beat timestamps based on new tempo
-      updateBeatTimestamps(Date.now(), true);
-    }
   }, [tempo]);
   
-  // Process audio data to detect onsets (sudden increases in amplitude)
+  // Initialize or reset metronome when recording starts/stops
   useEffect(() => {
-    if (!isRecording || !audioData) return;
-    
-    const now = Date.now();
-    const timeSinceLastProcess = now - lastProcessedTime.current;
-    
-    // Only process every 25ms to improve responsiveness
-    if (timeSinceLastProcess < 25) return;
-    lastProcessedTime.current = now;
-    
-    // Calculate RMS energy of the audio buffer
-    let sum = 0;
-    for (let i = 0; i < audioData.length; i++) {
-      sum += audioData[i] * audioData[i];
+    if (isRecording && isPlaying) {
+      if (!metronomeStartTime.current) {
+        console.log('Warning: metronome not started yet');
+        return;
+      }
+      
+      setBeatHistory([]);
+      setRhythmScore(0);
+    } else {
+      setBeatHistory([]);
+      setRhythmScore(0);
+      setCurrentBeat(0);
     }
-    const rms = Math.sqrt(sum / audioData.length);
+  }, [isRecording, isPlaying]);
+  
+  // Analyze onset timing with improved accuracy
+  const analyzeOnset = (timestamp: number) => {
+    if (!metronomeStartTime.current) {
+      console.log('Cannot analyze onset: metronome not initialized');
+      return;
+    }
+
+    console.log('Analyzing onset at timestamp:', timestamp);
+
+    // Calculate deviation from the closest beat directly
+    const beatDuration = beatInterval.current;
+    const startTime = metronomeStartTime.current;
     
-    // Use adaptive threshold for better onset detection
-    // Detect significant increases in energy rather than absolute values
-    const energyIncrease = rms - prevRMSRef.current;
-    prevRMSRef.current = rms;
+    const elapsedTime = timestamp - startTime;
+    // Use floor to keep beat index monotonic
+    const beatIndex = Math.floor(elapsedTime / beatDuration);
+    const closestBeatTime = startTime + beatIndex * beatDuration; // Calculate the time of that beat
     
-    // Gradually adapt the threshold based on audio input
-    adaptiveThresholdRef.current = 0.9 * adaptiveThresholdRef.current + 0.1 * (rms * 0.5);
+    const deviation = timestamp - closestBeatTime;
     
-    // Detect onset if energy exceeds threshold and there's a significant increase
-    if (rms > adaptiveThresholdRef.current && energyIncrease > 0.05) {
-      // Only count as a new onset if it's been at least 100ms since the last one
-      // This prevents multiple detections of the same beat
-      if (!lastOnsetTime.current || (now - lastOnsetTime.current) > 100) {
+    // Determine if the note is on beat (within tolerance)
+    const toleranceWindow = beatDuration * 0.25; // 25% of beat interval
+    const isOnBeat = Math.abs(deviation) <= toleranceWindow;
+    
+    console.log('Onset analysis:', {
+      closestBeat: closestBeatTime,
+      deviation,
+      toleranceWindow,
+      isOnBeat
+    });
+
+    // Create the event object with relative timestamp
+    const rhythmEventData: RhythmEvent = {
+        timestamp: elapsedTime, // Use elapsed time as relative timestamp
+        deviation: deviation,
+        beatIndex: beatIndex,
+        isOnBeat: isOnBeat
+    };
+
+    // Call the new prop with the detailed event data
+    if (onRhythmEvent) {
+        onRhythmEvent(rhythmEventData);
+    }
+
+    // --- Internal state update (for local visualization/score) ---
+    // Add to beat history for local display/calculations
+    const newBeat: BeatInfo = { 
+      id: timestamp,
+      timestamp, // Keep absolute timestamp for potential internal use
+      deviation, 
+      isOnBeat 
+    };
+    
+    setBeatHistory(prev => [newBeat, ...prev].slice(0, 10));
+  };
+  
+  // Update current beat based on metronome time
+  useEffect(() => {
+    if (!isPlaying || !metronomeStartTime.current) {
+      setCurrentBeat(0);
+      return;
+    }
+
+    const updateBeat = () => {
+      const now = Date.now();
+      const beatDuration = beatInterval.current;
+      const startTime = metronomeStartTime.current; // Store in local variable for type safety
+      
+      if (!startTime) return; // Extra safety check
+      
+      const elapsedBeats = Math.floor((now - startTime) / beatDuration);
+      setCurrentBeat(elapsedBeats % timeSignature[0]);
+      
+      // Schedule next update
+      animationFrameRef.current = requestAnimationFrame(updateBeat);
+    };
+
+    updateBeat();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying, externalMetronomeStartTime, timeSignature]);
+
+  // Process audio data for onset detection
+  useEffect(() => {
+    if (!isRecording || !isPlaying || !audioData || !metronomeStartTime.current) return;
+
+    const rms = calculateRMS(audioData);
+    const now = Date.now();
+
+    // Only process if enough time has passed since last processing
+    if (now - lastProcessedTime.current < 16) return; // ~60fps
+
+    // Onset detection using adaptive threshold
+    if (rms > adaptiveThresholdRef.current && rms > prevRMSRef.current) {
+      if (!lastOnsetTime.current || now - lastOnsetTime.current > 100) { // Debounce onsets
+        console.log('Onset detected at:', now);
         analyzeOnset(now);
         lastOnsetTime.current = now;
       }
     }
-    
-    // Update beat timestamps based on tempo
-    updateBeatTimestamps(now);
-    
-  }, [audioData, isRecording]);
-  
-  // Reset analysis when recording starts/stops
+
+    // Update state
+    prevRMSRef.current = rms;
+    lastProcessedTime.current = now;
+
+    // Adapt threshold
+    // Allow threshold to decay slowly over time to stay sensitive after loud passages
+    adaptiveThresholdRef.current = Math.max(
+      0.05,
+      adaptiveThresholdRef.current * 0.99 + rms * 0.01
+    );
+  }, [audioData, isRecording, isPlaying, externalMetronomeStartTime]);
+
+  const calculateRMS = (audioData: Float32Array) => {
+    let sum = 0;
+    for (let i = 0; i < audioData.length; i++) {
+      const value = Math.abs(audioData[i]);
+      sum += value * value;
+    }
+    return Math.sqrt(sum / audioData.length);
+  };
+
+  // Re-compute rhythm score whenever beat history changes
   useEffect(() => {
-    if (!isRecording) {
-      setBeatHistory([]);
-      setCurrentBeat(1);
-      setRhythmScore(0);
-      setAverageDeviation(null);
-      lastOnsetTime.current = null;
-      beatTimestamps.current = [];
-      lastProcessedTime.current = 0;
-      prevRMSRef.current = 0;
-      adaptiveThresholdRef.current = 0.1;
-      setMetronomeStartTime(null);
-    } else {
-      // Initialize beat timestamps when recording starts
-      const now = Date.now();
-      setMetronomeStartTime(now);
-      beatTimestamps.current = [now];
-      lastProcessedTime.current = now;
-      prevRMSRef.current = 0;
-      adaptiveThresholdRef.current = 0.1;
-      
-      // Pre-populate expected beat timestamps for better initial synchronization
-      updateBeatTimestamps(now, true);
-    }
-  }, [isRecording]);
-  
-  // Analyze an onset against the expected beat times
-  const analyzeOnset = (timestamp: number) => {
-    if (beatTimestamps.current.length === 0) return;
-    
-    // Find the closest expected beat
-    let closestBeat = beatTimestamps.current[0];
-    let minDeviation = Math.abs(timestamp - closestBeat);
-    
-    for (let i = 1; i < beatTimestamps.current.length; i++) {
-      const deviation = Math.abs(timestamp - beatTimestamps.current[i]);
-      if (deviation < minDeviation) {
-        minDeviation = deviation;
-        closestBeat = beatTimestamps.current[i];
-      }
-    }
-    
-    // Determine if the onset is "on beat" (within a tolerance window)
-    // Tolerance is tighter at slower tempos, looser at faster tempos
-    const toleranceWindow = Math.min(100, beatInterval.current * 0.3);
-    const isOnBeat = minDeviation <= toleranceWindow;
-    
-    // Add to beat history
-    const newBeat: BeatInfo = {
-      timestamp,
-      deviation: timestamp - closestBeat,
-      isOnBeat
-    };
-    
-    setBeatHistory(prev => {
-      const newHistory = [newBeat, ...prev].slice(0, 20); // Keep last 20 beats
-      
-      // Calculate average deviation and rhythm score
-      const deviations = newHistory.map(b => Math.abs(b.deviation));
-      const avgDev = deviations.reduce((sum, dev) => sum + dev, 0) / deviations.length;
-      setAverageDeviation(avgDev);
-      
-      // Calculate rhythm score (0-100)
-      // Perfect timing would be 0 deviation, which equals 100 score
-      // Maximum deviation we consider is half the beat interval, which equals 0 score
-      const maxDeviation = beatInterval.current / 2;
-      const onBeatCount = newHistory.filter(b => b.isOnBeat).length;
-      const accuracyScore = (onBeatCount / newHistory.length) * 100;
-      const deviationScore = 100 - Math.min(100, (avgDev / maxDeviation) * 100);
-      
-      // Combine accuracy and deviation scores with a 60/40 weight
-      const newScore = Math.round((accuracyScore * 0.6) + (deviationScore * 0.4));
-      setRhythmScore(newScore);
-      
-      // Call the callback if provided
-      if (onRhythmScoreUpdate) {
-        onRhythmScoreUpdate(newScore);
-      }
-      
-      return newHistory;
-    });
-  };
-  
-  // Update the expected beat timestamps based on the current tempo
-  const updateBeatTimestamps = (now: number, forceReset: boolean = false) => {
-    if (!metronomeStartTime) return;
-    
-    if (forceReset) {
-      // Reset timestamps completely based on current metronome start time
-      beatTimestamps.current = [];
-      
-      // Calculate expected beats based on metronome start time
-      const elapsedTime = now - metronomeStartTime;
-      const beatsSinceStart = Math.floor(elapsedTime / beatInterval.current);
-      
-      // Add the first beat at metronome start time
-      beatTimestamps.current.push(metronomeStartTime);
-      
-      // Add all beats since start up to current time plus future beats
-      for (let i = 1; i <= beatsSinceStart + 8; i++) {
-        beatTimestamps.current.push(metronomeStartTime + (i * beatInterval.current));
-      }
-    } else {
-      // Clear old timestamps that are more than 2 seconds in the past
-      beatTimestamps.current = beatTimestamps.current.filter(t => (now - t) < 2000);
-      
-      // Add future timestamps up to 2 seconds ahead
-      const lastTimestamp = beatTimestamps.current.length > 0 
-        ? beatTimestamps.current[beatTimestamps.current.length - 1] 
-        : metronomeStartTime;
-      
-      let nextBeat = lastTimestamp + beatInterval.current;
-      while (nextBeat < now + 2000) {
-        beatTimestamps.current.push(nextBeat);
-        nextBeat += beatInterval.current;
-      }
-    }
-    
-    // Update current beat position in the measure
-    const beatsPerMeasure = timeSignature[0];
-    const elapsedBeats = metronomeStartTime 
-      ? Math.floor((now - metronomeStartTime) / beatInterval.current) 
-      : 0;
-    setCurrentBeat((elapsedBeats % beatsPerMeasure) + 1);
-  };
-  
+    const recentBeats = beatHistory.slice(0, 5);
+    const onBeatCount = recentBeats.filter(b => b.isOnBeat).length;
+    const newScore = Math.round((onBeatCount / Math.max(recentBeats.length, 1)) * 100);
+    setRhythmScore(newScore);
+  }, [beatHistory]);
+
   // Helper to format deviation in ms
   const formatDeviation = (ms: number): string => {
     const absMs = Math.abs(ms);
-    const sign = ms < 0 ? 'early' : 'late';
-    return `${absMs.toFixed(0)}ms ${sign}`;
-  };
-  
-  // Get color based on rhythm score
-  const getScoreColor = (): string => {
-    if (rhythmScore >= 80) return 'text-green-500';
-    if (rhythmScore >= 60) return 'text-yellow-500';
-    return 'text-red-500';
+    if (absMs < 1000) return `${ms > 0 ? '+' : ''}${Math.round(ms)}ms`;
+    return `${ms > 0 ? '+' : ''}${(ms / 1000).toFixed(2)}s`;
   };
 
   return (
-    <div className="rhythm-analysis bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-        Rhythm Analysis
-      </h3>
+    <div className="rhythm-analysis bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+      <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Rhythm Analysis</h2>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Rhythm score */}
-        <div className="text-center p-3 bg-gray-100 dark:bg-gray-700 rounded">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Rhythm Score
-          </h4>
-          <div className={`text-3xl font-bold ${getScoreColor()}`}>
-            {isRecording ? rhythmScore : '--'}
-          </div>
-          {averageDeviation !== null && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Avg. Deviation: {formatDeviation(averageDeviation)}
-            </div>
-          )}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-gray-600 dark:text-gray-300">Rhythm Score</span>
+          <span className="font-medium text-lg">{rhythmScore}%</span>
         </div>
-        
-        {/* Current beat indicator */}
-        <div className="text-center p-3 bg-gray-100 dark:bg-gray-700 rounded">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Current Beat
-          </h4>
-          <div className="flex justify-center space-x-2">
-            {Array.from({ length: timeSignature[0] }).map((_, i) => (
-              <div 
-                key={i}
-                className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  currentBeat === i + 1 && isRecording
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                {i + 1}
-              </div>
-            ))}
-          </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            Tempo: {tempo} BPM
-          </div>
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+          <div 
+            className="bg-indigo-600 h-2.5 rounded-full" 
+            style={{ width: `${rhythmScore}%` }}
+          ></div>
+        </div>
+      </div>
+      
+      {/* Current beat indicator */}
+      <div className="mb-4">
+        <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-2">Current Beat</h4>
+        <div className="flex space-x-2">
+          {Array.from({ length: timeSignature[0] }).map((_, i) => (
+            <div 
+              key={i}
+              className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                currentBeat === i
+                  ? 'bg-indigo-500 text-white'
+                  : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              {i + 1}
+            </div>
+          ))}
         </div>
       </div>
       
       {/* Beat history visualization */}
-      <div className="mt-4">
-        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Recent Beats
-        </h4>
-        <div className="h-8 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden relative">
-          {/* Center line (perfect timing) */}
-          <div className="absolute top-0 left-1/2 w-px h-full bg-gray-400 dark:bg-gray-500"></div>
-          
-          {/* Tolerance window */}
-          <div className="absolute top-0 left-1/2 h-full bg-green-200 dark:bg-green-900/30 transform -translate-x-1/2" 
-               style={{ width: `${Math.min(50, beatInterval.current * 0.3)}px` }}>
-          </div>
-          
-          {/* Beat markers */}
-          {beatHistory.slice(0, 10).map((beat, index) => {
-            // Calculate position based on deviation
-            // Center is perfect timing, left is early, right is late
-            const maxDeviation = beatInterval.current / 2;
-            const position = 50 + ((beat.deviation / maxDeviation) * 50);
-            const clampedPosition = Math.max(0, Math.min(100, position));
-            
-            return (
-              <div 
-                key={index}
-                className={`absolute top-0 w-2 h-full ${beat.isOnBeat ? 'bg-green-500' : 'bg-red-500'}`}
-                style={{ left: `${clampedPosition}%` }}
-              ></div>
-            );
-          })}
+      <div className="beat-visualization mb-4">
+        <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-2">Beat Timing</h4>
+        <div className="flex space-x-2 overflow-x-auto pb-2">
+          {beatHistory.map((beat, index) => (
+            <div 
+              key={beat.id}
+              className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xs font-medium ${
+                beat.isOnBeat 
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
+              }`}
+              title={`Deviation: ${formatDeviation(beat.deviation)}`}
+            >
+              {index + 1}
+            </div>
+          ))}
+          {beatHistory.length === 0 && (
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              No beats detected yet
+            </div>
+          )}
         </div>
       </div>
       
-      {!isRecording && (
-        <div className="mt-4 text-center text-gray-500 dark:text-gray-400 text-sm">
-          Start recording to analyze your rhythm
-        </div>
-      )}
+      <div className="text-sm text-gray-600 dark:text-gray-400">
+        <p>Current tempo: {tempo} BPM</p>
+        <p>Time signature: {timeSignature[0]}/{timeSignature[1]}</p>
+      </div>
     </div>
   );
 };
