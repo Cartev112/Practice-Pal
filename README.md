@@ -74,17 +74,3 @@ src/
 - **Continuous Integration**: Regularly integrate code changes
 - **User-Centered Design**: Focus on intuitive UX/UI for musicians
 
-## Future Enhancements
-
-- **Adaptive Tempo Control**: Dynamic adjustment based on performance
-- **Real-time Audio Analysis**: Pitch and rhythm detection
-- **Intelligent Exercise Generator**: Custom exercises based on weaknesses
-- **Progress Visualization**: Performance metrics tracking and visualization
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
